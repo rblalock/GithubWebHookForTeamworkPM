@@ -7,7 +7,7 @@
 // CHANGE ME - Root URL for the Teamwork API call
 $URL = ''; // e.g. https://yoursite.teamworkpm.net/tasks/
 
-// TeamworkPM user token used to post a comment on behalf of the Github commit
+// CHANGE ME - TeamworkPM user token used to post a comment on behalf of the Github commit
 $USER_TOKEN = '';
 
 try {
