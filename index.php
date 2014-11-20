@@ -18,6 +18,8 @@ try {
     $postdata = json_decode($data);
 
     if($_POST['payload'] && $postdata) {
+        $repo_name  = $postdata->repository->full_name;
+
         // Iterate through each commit to see if we have a related task
         foreach ($postdata->commits as $commit) {
             // Format message data
@@ -26,7 +28,6 @@ try {
             $url        = $commit->url;
             $timestamp  = $commit->timestamp;
             $author     = $commit->author->name;
-            $repo_name  = $commit->repository->full_name;
 
             // Get any commit messages that have a # tag (points ot a resource ID in Teamwork)
             preg_match_all('/#([A-Za-z0-9_]+)/', $comment, $matches);
@@ -46,6 +47,7 @@ try {
                 )
             );
             $postData = json_encode($params);
+            _debug($params);
 
             if(count($resourceID) > 0) {
                 // Iterate through each hash tag / resource and make a request
@@ -58,7 +60,7 @@ try {
                     // Create the comment
                     $c = curl_init();
                     $headers = array(
-                        'Authorization: BASIC '. base64_encode($USER_TOKEN . ':xxxzzz'),
+                        'Authorization: BASIC '. base64_encode(USER_TOKEN . ':xxxzzz'),
                         'Content-Type: application/json',
                         'Accept: application/json'
                     );
@@ -80,6 +82,7 @@ try {
                     curl_close($c);
 
                     echo "Task #$resource ($httpCode): " . $teamwork_url . PHP_EOL;
+                    _debug($response);
                 }
             }
         }
@@ -87,4 +90,10 @@ try {
 
 } catch (Exception $e) {
     print_r($e);
+}
+
+function _debug($obj) {
+    if (isset($_GET[ 'debug' ])) {
+        print_r($obj);
+    }
 }
