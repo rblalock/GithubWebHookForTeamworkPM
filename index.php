@@ -3,12 +3,14 @@
  * GitHub Post to TeamworkPM
  * @version 1.1
  */
+require_once 'config.php';
 
-// CHANGE ME - Root URL for the Teamwork API call
-$URL = ''; // e.g. https://yoursite.teamworkpm.net/tasks/
 
-// CHANGE ME - TeamworkPM user token used to post a comment on behalf of the Github commit
-$USER_TOKEN = '';
+$headers = @apache_request_headers();
+$github_event = @$headers[ 'X-GitHub-Event' ];
+if('ping' == $github_event) {
+    echo 'Ping. URL: ' . COMMENT_URL;
+}
 
 try {
     // Convert the post data
@@ -19,7 +21,7 @@ try {
         // Iterate through each commit to see if we have a related task
         foreach ($postdata->commits as $commit) {
             // Format message data
-            $commidID   = $commit->id;
+            $commitID   = $commit->id;
             $comment    = $commit->message;
             $url        = $commit->url;
             $timestamp  = $commit->timestamp;
@@ -44,6 +46,11 @@ try {
             if(count($resourceID) > 0) {
                 // Iterate through each hash tag / resource and make a request
                 foreach ($resourceID as $resource) {
+                    if($resource < MIN_RESOURCE_ID) {
+                        echo "Task #$resource: skipping" . PHP_EOL;
+                        continue;
+                    }
+
                     // Create the comment
                     $c = curl_init();
                     $headers = array(
@@ -57,14 +64,18 @@ try {
                         CURLOPT_SSL_VERIFYHOST => FALSE,
                         CURLOPT_SSL_VERIFYPEER => FALSE,
                         CURLOPT_POST => TRUE,
+                        CURLOPT_PROXY => HTTP_PROXY,
                         CURLOPT_HTTPHEADER => $headers
                     ));
-                    curl_setopt($c, CURLOPT_URL, $URL . $resource . '/comments.json');
+                    $comment_url = sprintf( COMMENT_URL, $resource );
+                    curl_setopt($c, CURLOPT_URL, $comment_url);
                     curl_setopt($c, CURLOPT_POSTFIELDS, $postData );
 
                     $response = curl_exec($c);
                     $httpCode = curl_getinfo($c, CURLINFO_HTTP_CODE);
                     curl_close($c);
+
+                    echo "Task #$resource ($httpCode): " . $comment_url . PHP_EOL;
                 }
             }
         }
