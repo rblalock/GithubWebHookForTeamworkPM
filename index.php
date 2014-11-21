@@ -1,14 +1,16 @@
 <?php
 /**
  * GitHub Post to TeamworkPM
- * @version 1.1
+ * @version 1.2
  */
+require_once 'config.php';
 
-// CHANGE ME - Root URL for the Teamwork API call
-$URL = ''; // e.g. https://yoursite.teamworkpm.net/tasks/
 
-// CHANGE ME - TeamworkPM user token used to post a comment on behalf of the Github commit
-$USER_TOKEN = '';
+$headers = @apache_request_headers();
+$github_event = @$headers[ 'X-GitHub-Event' ];
+if('ping' == $github_event) {
+    echo 'Ping. URL: ' . COMMENT_URL;
+}
 
 try {
     // Convert the post data
@@ -16,10 +18,12 @@ try {
     $postdata = json_decode($data);
 
     if($_POST['payload'] && $postdata) {
+        $repo_name  = $postdata->repository->full_name;
+
         // Iterate through each commit to see if we have a related task
         foreach ($postdata->commits as $commit) {
             // Format message data
-            $commidID   = $commit->id;
+            $commitID   = $commit->id;
             $comment    = $commit->message;
             $url        = $commit->url;
             $timestamp  = $commit->timestamp;
@@ -31,23 +35,32 @@ try {
             $resourceID = array_pop($matches);
 
             // Format the message that will post to Teamwork
-            $body = $comment . "\n\n" .
-                    $url . "\n\n" .
-                    "committed by " . $author . " on " . date('m/d/Y', strtotime($timestamp));
+            $body = strtr(COMMENT_TEMPLATE, array(
+                        '{COMMENT}' => $comment,
+                        '{URL}'     => $url,
+                        '{COMMIT_NAME}' => $repo_name .'@'. substr($commitID, 0, 7),
+                        '{AUTHOR}'  => $author,
+                        '{DATE}'    => date(DATE_FORMAT, strtotime($timestamp)) ));
             $params = array(
                 'comment' => array(
                     'body' => $body
                 )
             );
             $postData = json_encode($params);
+            _debug($params);
 
             if(count($resourceID) > 0) {
                 // Iterate through each hash tag / resource and make a request
                 foreach ($resourceID as $resource) {
+                    if($resource < MIN_RESOURCE_ID) {
+                        echo "Task #$resource: skipping" . PHP_EOL;
+                        continue;
+                    }
+
                     // Create the comment
                     $c = curl_init();
                     $headers = array(
-                        'Authorization: BASIC '. base64_encode($USER_TOKEN . ':xxxzzz'),
+                        'Authorization: BASIC '. base64_encode(USER_TOKEN . ':xxxzzz'),
                         'Content-Type: application/json',
                         'Accept: application/json'
                     );
@@ -57,14 +70,19 @@ try {
                         CURLOPT_SSL_VERIFYHOST => FALSE,
                         CURLOPT_SSL_VERIFYPEER => FALSE,
                         CURLOPT_POST => TRUE,
+                        CURLOPT_PROXY => HTTP_PROXY,
                         CURLOPT_HTTPHEADER => $headers
                     ));
-                    curl_setopt($c, CURLOPT_URL, $URL . $resource . '/comments.json');
+                    $teamwork_url = sprintf( COMMENT_URL, $resource );
+                    curl_setopt($c, CURLOPT_URL, $teamwork_url);
                     curl_setopt($c, CURLOPT_POSTFIELDS, $postData );
 
                     $response = curl_exec($c);
                     $httpCode = curl_getinfo($c, CURLINFO_HTTP_CODE);
                     curl_close($c);
+
+                    echo "Task #$resource ($httpCode): " . $teamwork_url . PHP_EOL;
+                    _debug($response);
                 }
             }
         }
@@ -72,4 +90,10 @@ try {
 
 } catch (Exception $e) {
     print_r($e);
+}
+
+function _debug($obj) {
+    if (isset($_GET[ 'debug' ])) {
+        print_r($obj);
+    }
 }
